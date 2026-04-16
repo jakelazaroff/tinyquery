@@ -23,6 +23,7 @@ export class Query extends CoreQuery {
 
 	/** @override */
 	get data() {
-		return (super.data, this.#state.value.data);
+		this.ensureFetched();
+		return this.#state.value.data;
 	}
 }

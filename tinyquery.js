@@ -230,8 +230,12 @@ export class Query {
 		this.#unsub = null;
 	}
 
-	get data() {
+	ensureFetched() {
 		if (!this.#fetched) this.#fetch(this.#key(this.#params));
+	}
+
+	get data() {
+		this.ensureFetched();
 		return this.#state.data;
 	}
 }
