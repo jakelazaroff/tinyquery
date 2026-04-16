@@ -162,18 +162,14 @@ export class QueryClient {
 
 		this.#channel.subscribe((msg) => {
 			if (msg.state.status === "success") this.#storage.set(msg.key, msg.state.data);
+
 			const obs = this.#queries.get(msg.key);
-			if (!obs) return;
-			obs.set(msg.state);
+			obs?.set(msg.state);
 		});
 	}
 
-	/**
-	 * @param {string} key
-	 * @param {() => Promise<unknown>} query
-	 * @returns {Promise<Observable<QueryState>>}
-	 */
-	async query(key, query) {
+	/** @param {string} key */
+	async value(key) {
 		let obs = /** @type {Observable<QueryState>} */ (this.#queries.get(key));
 
 		if (!obs) {
@@ -182,8 +178,19 @@ export class QueryClient {
 			this.#queries.set(key, obs);
 		}
 
+		return obs;
+	}
+
+	/**
+	 * @param {string} key
+	 * @param {() => Promise<unknown>} query
+	 * @returns {Promise<Observable<QueryState>>}
+	 */
+	async query(key, query) {
+		const obs = await this.value(key);
+
 		obs.set({ ...obs.get(), status: "loading" });
-		await navigator.locks.request(key, async () => {
+		navigator.locks.request(key, async () => {
 			if (obs.get().status !== "loading") return; // someone else finished while we waited
 
 			try {
