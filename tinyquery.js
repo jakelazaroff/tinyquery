@@ -141,6 +141,101 @@ class Observable {
 	}
 }
 
+/**
+ * @template {any} Params
+ * @template {any[]} Key
+ * @template {any} Data
+ */
+export class Query {
+	#fetched = false;
+
+	/** @type {QueryClient} */
+	#client;
+
+	/** @type {(key: Key) => Promise<Data>} */
+	#fn;
+
+	/** @type {(params: Params) => Key} */
+	#key;
+
+	/** @type {Params} */
+	#params;
+
+	/** @type {QueryState} */
+	#state = { status: "success", data: undefined };
+
+	/** @type {(state: QueryState) => void} */
+	#set;
+
+	/** @type {(() => void) | null} */
+	#unsub = null;
+
+	/**
+	 * @param {QueryClient} client
+	 * @param {object} options
+	 * @param {Params} options.params
+	 * @param {(params: Params) => Key} options.key
+	 * @param {(key: Key) => Promise<Data>} options.query
+	 * @param {(state: QueryState) => void} options.set
+	 */
+	constructor(client, { params, key, query, set }) {
+		this.#client = client;
+		this.#fn = query;
+		this.#key = key;
+		this.#params = params;
+		this.#set = set;
+		this.#init();
+	}
+
+	async #init() {
+		const key = JSON.stringify(this.#key(this.#params));
+		const state = await this.#client.value(key);
+		this.#setState(state.get());
+	}
+
+	/** @param {QueryState} state */
+	#setState(state) {
+		this.#state = state;
+		this.#set(state);
+	}
+
+	/** @param {Params} value */
+	set params(value) {
+		const key = this.#key(value);
+		if (JSON.stringify(this.#key(this.#params)) === JSON.stringify(key)) return;
+		this.#params = value;
+
+		this.#fetch(key);
+	}
+
+	/** @param {Key} key */
+	async #fetch(key) {
+		this.#fetched = true;
+		this.#unsub?.();
+		this.#unsub = null;
+
+		const obs = await this.#client.query(JSON.stringify(key), () => this.#fn(key));
+		this.#setState(obs.get());
+		this.#unsub = obs.subscribe((s) => {
+			this.#setState(s);
+		});
+	}
+
+	fetch() {
+		this.#fetch(this.#key(this.#params));
+	}
+
+	[Symbol.dispose]() {
+		this.#unsub?.();
+		this.#unsub = null;
+	}
+
+	get data() {
+		if (!this.#fetched) this.#fetch(this.#key(this.#params));
+		return this.#state.data;
+	}
+}
+
 export class QueryClient {
 	/** @type {Map<string, Observable<QueryState>>} */
 	#queries = new Map();
