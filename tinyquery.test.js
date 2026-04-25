@@ -205,7 +205,7 @@ describe("Query", () => {
 		await flush();
 
 		// Trigger fetch
-		query.fetch();
+		query.refetch();
 		await flush();
 
 		const last = states[states.length - 1];
@@ -224,11 +224,11 @@ describe("Query", () => {
 
 		await flush();
 
-		query.fetch();
+		query.refetch();
 		await flush();
 		assert.equal(query.data, 1);
 
-		query.fetch();
+		query.refetch();
 		await flush();
 		assert.equal(query.data, 2);
 	});
@@ -285,7 +285,7 @@ describe("Query", () => {
 		});
 
 		await flush();
-		query.fetch();
+		query.refetch();
 		await flush();
 
 		const errorState = states.find((s) => s.status === "error");
@@ -302,7 +302,7 @@ describe("Query", () => {
 		});
 
 		await flush();
-		query.fetch();
+		query.refetch();
 		await flush();
 
 		const countBefore = states.length;

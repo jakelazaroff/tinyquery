@@ -1,6 +1,14 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// Copyright (c) 2026 Jake Lazaroff https://github.com/jakelazaroff/tinyquery
+
+/** @typedef {"loading" | "success" | "error"} QueryStatus */
+
 /**
- * @typedef {"loading" | "success" | "error"} QueryStatus
- * @typedef {{ status: QueryStatus, data?: unknown, error?: any }} QueryState
+ * @template [T=unknown]
+ * @typedef {{ status: QueryStatus, data?: T, error?: any }} QueryState
  */
 
 /**
@@ -50,10 +58,10 @@ export function indexedDBStorage(name, options) {
 	 * @param {IDBTransactionMode} mode
 	 * @returns {Promise<IDBObjectStore>}
 	 */
-	const getStore = async (mode) => {
+	async function getStore(mode) {
 		const db = await dbPromise;
 		return db.transaction(storeName, mode).objectStore(storeName);
-	};
+	}
 
 	/**
 	 * @template T
@@ -147,6 +155,9 @@ class Observable {
  * @template {any} Data
  */
 export class Query {
+	/** @type {QueryState} */
+	static DEFAULT_STATE = { status: "success", data: undefined };
+
 	#fetched = false;
 
 	/** @type {QueryClient} */
@@ -160,9 +171,6 @@ export class Query {
 
 	/** @type {Params} */
 	#params;
-
-	/** @type {QueryState} */
-	#state = { status: "success", data: undefined };
 
 	/** @type {(state: QueryState) => void} */
 	#set;
@@ -189,14 +197,8 @@ export class Query {
 
 	async #init() {
 		const key = JSON.stringify(this.#key(this.#params));
-		const state = await this.#client.value(key);
-		this.#setState(state.get());
-	}
-
-	/** @param {QueryState} state */
-	#setState(state) {
-		this.#state = state;
-		this.#set(state);
+		const state = (await this.#client.value(key)) ?? Query.DEFAULT_STATE;
+		this.#set(state.get());
 	}
 
 	/** @param {Params} value */
@@ -214,15 +216,26 @@ export class Query {
 		this.#unsub?.();
 		this.#unsub = null;
 
-		const obs = await this.#client.query(JSON.stringify(key), () => this.#fn(key));
-		this.#setState(obs.get());
+		const keystr = JSON.stringify(key);
+		const obs = await this.#client.value(keystr);
+		this.#set(obs.get());
 		this.#unsub = obs.subscribe((s) => {
-			this.#setState(s);
+			this.#set(s);
 		});
+		await this.#client.query(keystr, () => this.#fn(key));
 	}
 
-	fetch() {
-		this.#fetch(this.#key(this.#params));
+	async refetch() {
+		await this.#fetch(this.#key(this.#params));
+	}
+
+	/**
+	 * Fetch a query and store the result in the cache without mounting it.
+	 * @param {Params} params
+	 */
+	async prefetch(params) {
+		const key = this.#key(params);
+		this.#client.query(JSON.stringify(key), () => this.#fn(key));
 	}
 
 	[Symbol.dispose]() {
@@ -232,11 +245,6 @@ export class Query {
 
 	ensureFetched() {
 		if (!this.#fetched) this.#fetch(this.#key(this.#params));
-	}
-
-	get data() {
-		this.ensureFetched();
-		return this.#state.data;
 	}
 }
 
@@ -281,16 +289,17 @@ export class QueryClient {
 	}
 
 	/**
+	 * @template T
 	 * @param {string} key
-	 * @param {() => Promise<unknown>} query
-	 * @returns {Promise<Observable<QueryState>>}
+	 * @param {() => Promise<T>} query
+	 * @returns {Promise<T>}
 	 */
 	async query(key, query) {
 		const obs = await this.value(key);
-
 		obs.set({ ...obs.get(), status: "loading" });
+
 		navigator.locks.request(key, async () => {
-			if (obs.get().status !== "loading") return; // someone else finished while we waited
+			if (obs.get().status !== "loading") return;
 
 			try {
 				const data = await query();
@@ -305,6 +314,16 @@ export class QueryClient {
 			}
 		});
 
-		return obs;
+		return new Promise((resolve, reject) => {
+			const unsub = obs.subscribe((state) => {
+				if (state.status === "success") {
+					unsub();
+					resolve(/** @type {T} */ (state.data));
+				} else if (state.status === "error") {
+					unsub();
+					reject(state.error);
+				}
+			});
+		});
 	}
 }

@@ -1,3 +1,9 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// Copyright (c) 2026 Jake Lazaroff https://github.com/jakelazaroff/tinyquery
+
 import { signal } from "@preact/signals";
 import { Query as CoreQuery } from "../tinyquery.js";
 
@@ -8,7 +14,7 @@ import { Query as CoreQuery } from "../tinyquery.js";
  * @extends {CoreQuery<Params, Key, Data>}
  */
 export class Query extends CoreQuery {
-	#state = signal({ status: "success", data: undefined });
+	#state = signal(CoreQuery.DEFAULT_STATE);
 
 	/**
 	 * @param {import("../tinyquery.js").QueryClient} client
@@ -21,9 +27,16 @@ export class Query extends CoreQuery {
 		super(client, { ...options, set: (s) => (this.#state.value = s) });
 	}
 
-	/** @override */
 	get data() {
 		this.ensureFetched();
 		return this.#state.value.data;
+	}
+
+	get error() {
+		return this.#state.value.error;
+	}
+
+	get loading() {
+		return this.#state.value.status === "loading";
 	}
 }
