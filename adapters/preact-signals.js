@@ -22,9 +22,10 @@ export class Query extends CoreQuery {
 	 * @param {Params} options.params
 	 * @param {(params: Params) => Key} options.key
 	 * @param {(key: Key) => Promise<Data>} options.query
+	 * @param {(params: Params) => boolean} [options.enabled]
 	 */
 	constructor(client, options) {
-		super(client, { ...options, set: (s) => (this.#state.value = s) });
+		super(client, { ...options, set: (value) => (this.#state.value = value) });
 	}
 
 	get data() {

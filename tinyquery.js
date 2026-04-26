@@ -197,7 +197,7 @@ export class Query {
 
 	async #init() {
 		const key = JSON.stringify(this.#key(this.#params));
-		const state = (await this.#client.value(key)) ?? Query.DEFAULT_STATE;
+		const state = (await this.#client.obs(key)) ?? Query.DEFAULT_STATE;
 		this.#set(state.get());
 	}
 
@@ -217,7 +217,7 @@ export class Query {
 		this.#unsub = null;
 
 		const keystr = JSON.stringify(key);
-		const obs = await this.#client.value(keystr);
+		const obs = await this.#client.obs(keystr);
 		this.#set(obs.get());
 		this.#unsub = obs.subscribe((s) => {
 			this.#set(s);
@@ -259,11 +259,11 @@ export class QueryClient {
 	#channel;
 
 	/**
-	 * @param {object} options
-	 * @param {StorageAdapter} options.storage
-	 * @param {ChannelAdapter} options.channel
+	 * @param {object} [options]
+	 * @param {StorageAdapter} [options.storage]
+	 * @param {ChannelAdapter} [options.channel]
 	 */
-	constructor({ storage, channel }) {
+	constructor({ storage = memoryStorage(), channel = localChannel() } = {}) {
 		this.#storage = storage;
 		this.#channel = channel;
 
@@ -275,9 +275,12 @@ export class QueryClient {
 		});
 	}
 
-	/** @param {string} key */
-	async value(key) {
-		let obs = /** @type {Observable<QueryState>} */ (this.#queries.get(key));
+	/**
+	 * Return the observable query value for a given key.
+	 *
+	 * @param {string} key */
+	async obs(key) {
+		let obs = this.#queries.get(key);
 
 		if (!obs) {
 			const stored = await this.#storage.get(key);
@@ -289,16 +292,21 @@ export class QueryClient {
 	}
 
 	/**
+	 * Given a string key and query function, coordinate with other mounted instances
+	 * to run the query and store the result in the cache.
+	 *
 	 * @template T
 	 * @param {string} key
 	 * @param {() => Promise<T>} query
 	 * @returns {Promise<T>}
 	 */
 	async query(key, query) {
-		const obs = await this.value(key);
+		const obs = await this.obs(key);
 		obs.set({ ...obs.get(), status: "loading" });
 
 		navigator.locks.request(key, async () => {
+			// if the status is no longer `loading`, it means another query for this key
+			// finished running (or errored out) while we were waiting for the lock
 			if (obs.get().status !== "loading") return;
 
 			try {
